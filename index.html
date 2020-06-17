@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+  </head>
+  <body>
+    <button id="start" style="width: 100%; height: 100px;">
+      Start with webcam
+    </button>
+    <div id="opencvInitInfo" style="font-size: 40px;">
+      Initializing OpenCV.js...
+    </div>
+
+    <video id="video-input" width="800" height="600"></video>
+    <canvas id="canvas-output" width="800" height="600"></canvas>
+
+    <!-- <script src="https://docs.opencv.org/master/opencv.js"></script> -->
+    <script src="opencv.js"></script>
+    <script>
+      const video = document.getElementById("video-input");
+
+      const runtimeInitialized = new Promise((resolve, reject) => {
+        cv["onRuntimeInitialized"] = () => {
+          opencvInitInfo.parentNode.removeChild(opencvInitInfo);
+          resolve();
+        };
+      });
+
+      const webcamInitialized = new Promise((resolve, reject) => {
+        start.onclick = () => {
+          start.parentNode.removeChild(start);
+          navigator.mediaDevices
+            .getUserMedia({ video: true, audio: false })
+            .then(function (stream) {
+              video.srcObject = stream;
+              video.play();
+              setTimeout(resolve);
+            })
+            .catch(reject);
+        };
+      });
+
+      let src, cap;
+      let hsvSkinRangeLow, hsvSkinRangeHigh, rSkinRange;
+
+      Promise.all([runtimeInitialized, webcamInitialized]).then(() => {
+        src = new cv.Mat(video.height, video.width, cv.CV_8UC4);
+        cap = new cv.VideoCapture(video);
+
+        const scalarToMat = (scalar, type) =>
+          new cv.Mat(video.height, video.width, type, [
+            scalar[0] || 0,
+            scalar[1] || 0,
+            scalar[2] || 0,
+            scalar[3] || 0,
+          ]);
+
+        hsvSkinRangeLow = scalarToMat(
+          [0, Math.round(0.23 * 255), 0, 0],
+          cv.CV_8UC3
+        );
+
+        hsvSkinRangeHigh = scalarToMat(
+          [50, Math.round(0.68 * 255), 255, 255],
+          cv.CV_8UC3
+        );
+
+        setTimeout(processVideo);
+      });
+
+      const fps = 30;
+
+      let streaming = true;
+
+      function processVideo() {
+        if (!streaming) {
+          src.delete();
+          return;
+        }
+
+        const begin = Date.now();
+
+        cap.read(src);
+
+        const skinMask = getSkinMask(src);
+        const dst = new cv.Mat();
+        cv.bitwise_and(src, src, dst, skinMask);
+
+        cv.imshow("canvas-output", dst);
+        skinMask.delete();
+        dst.delete();
+
+        setTimeout(processVideo, 1000 / fps - (Date.now() - begin));
+      }
+
+      function getSkinMask(src) {
+        // values taken from https://arxiv.org/pdf/1708.02694.pdf
+
+        const rgbEq = equalizeHist(src);
+        // const rgbEq = new cv.Mat(src);
+
+        // const rgbaPlanes = new cv.MatVector();
+        // cv.split(rgbEq, rgbaPlanes);
+        // const r = rgbaPlanes.get(0);
+        // const g = rgbaPlanes.get(1);
+        // const b = rgbaPlanes.get(2);
+
+        const hsv = new cv.Mat();
+        cv.cvtColor(rgbEq, hsv, cv.COLOR_RGB2HSV);
+
+        const skinMask_hsv = new cv.Mat();
+        cv.inRange(hsv, hsvSkinRangeLow, hsvSkinRangeHigh, skinMask_hsv);
+
+        const skinMask = new cv.Mat();
+        cv.bitwise_and(skinMask_hsv, skinMask_hsv, skinMask);
+
+        rgbEq.delete();
+        // rgbaPlanes.delete();
+        // r.delete();
+        // g.delete();
+        // b.delete();
+        hsv.delete();
+        skinMask_hsv.delete();
+
+        return skinMask;
+      }
+
+      function equalizeHist(rgb) {
+        try {
+          const yuv = new cv.Mat();
+          cv.cvtColor(src, yuv, cv.COLOR_RGB2YUV);
+
+          const yuvPlanes = new cv.MatVector();
+          cv.split(yuv, yuvPlanes);
+          const y = yuvPlanes.get(0);
+          const yEq = new cv.Mat();
+
+          cv.equalizeHist(y, yEq);
+
+          yuvPlanes.set(0, yEq);
+          const yuvEq = new cv.Mat();
+          cv.merge(yuvPlanes, yuvEq);
+
+          const rgbEq = new cv.Mat();
+          cv.cvtColor(yuvEq, rgbEq, cv.COLOR_YUV2RGB);
+
+          yuv.delete();
+          yuvPlanes.delete();
+          y.delete();
+          yEq.delete();
+
+          return rgbEq;
+        } catch (e) {
+          console.log(e);
+          throw e;
+        }
+      }
+    </script>
+  </body>
+</html>
