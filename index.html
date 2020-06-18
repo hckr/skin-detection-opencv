@@ -13,10 +13,27 @@
       Initializing OpenCV.js...
     </div>
 
-    <video id="video-input" width="800" height="600"></video>
-    <canvas id="canvas-output" width="800" height="600"></canvas>
+    <select id="outputSelector">
+      <option value="skinonly">only skin from image</option>
+      <option value="mask">skin mask</option>
+      <option value="input">input to skin recognition</option>
+    </select>
 
-    <!-- <script src="https://docs.opencv.org/master/opencv.js"></script> -->
+    <select id="methodSelector">
+      <option value="1">method 1</option>
+      <option value="2">method 2</option>
+    </select>
+
+    <label>
+      <input type="checkbox" id="histogramEq" />
+      histogram equalization
+    </label>
+
+    <br /><br />
+
+    <video id="video-input" width="400" height="300"></video>
+    <canvas id="canvas-output" width="400" height="300"></canvas>
+
     <script src="opencv.js"></script>
     <script>
       const video = document.getElementById("video-input");
@@ -43,7 +60,11 @@
       });
 
       let src, cap;
-      let hsvSkinRangeLow, hsvSkinRangeHigh, rSkinRange;
+
+      let method1_hsvSkinRangeLow, method1_hsvSkinRangeHigh;
+
+      let method2_hsvSkinRangeLow1, method2_hsvSkinRangeHigh1;
+      let method2_hsvSkinRangeLow2, method2_hsvSkinRangeHigh2;
 
       Promise.all([runtimeInitialized, webcamInitialized]).then(() => {
         src = new cv.Mat(video.height, video.width, cv.CV_8UC4);
@@ -57,13 +78,33 @@
             scalar[3] || 0,
           ]);
 
-        hsvSkinRangeLow = scalarToMat(
+        method1_hsvSkinRangeLow = scalarToMat(
           [0, Math.round(0.23 * 255), 0, 0],
           cv.CV_8UC3
         );
 
-        hsvSkinRangeHigh = scalarToMat(
-          [50, Math.round(0.68 * 255), 255, 255],
+        method1_hsvSkinRangeHigh = scalarToMat(
+          [10, Math.round(0.68 * 255), 255, 255],
+          cv.CV_8UC3
+        );
+
+        method2_hsvSkinRangeLow1 = scalarToMat(
+          [0, Math.round(0.2 * 255), 0.4 * 255, 0],
+          cv.CV_8UC3
+        );
+
+        method2_hsvSkinRangeHigh1 = scalarToMat(
+          [0.1 * 255, Math.round(0.6 * 255), 255, 255],
+          cv.CV_8UC3
+        );
+
+        method2_hsvSkinRangeLow2 = scalarToMat(
+          [0.9 * 255, Math.round(0.2 * 255), 0.4 * 255, 0],
+          cv.CV_8UC3
+        );
+
+        method2_hsvSkinRangeHigh2 = scalarToMat(
+          [255, Math.round(0.6 * 255), 255, 255],
           cv.CV_8UC3
         );
 
@@ -84,78 +125,130 @@
 
         cap.read(src);
 
-        const skinMask = getSkinMask(src);
-        const dst = new cv.Mat();
-        cv.bitwise_and(src, src, dst, skinMask);
+        let input = src;
 
-        cv.imshow("canvas-output", dst);
+        const histogramEqEnabled = histogramEq.checked;
+
+        if (histogramEqEnabled) {
+          input = equalizeHist(src);
+        }
+
+        let skinMask;
+        switch (methodSelector.value) {
+          case "1":
+            skinMask = getSkinMask_method1(input);
+            break;
+
+          case "2":
+            skinMask = getSkinMask_method2(input);
+            break;
+
+          default:
+            return;
+        }
+
+        const skinOnly = new cv.Mat();
+        cv.bitwise_and(input, input, skinOnly, skinMask);
+
+        switch (outputSelector.value) {
+          case "mask":
+            cv.imshow("canvas-output", skinMask);
+            break;
+
+          case "skinonly":
+            cv.imshow("canvas-output", skinOnly);
+            break;
+
+          case "input":
+            cv.imshow("canvas-output", input);
+            break;
+        }
         skinMask.delete();
-        dst.delete();
+        skinOnly.delete();
+
+        if (histogramEqEnabled) {
+          input.delete();
+        }
 
         setTimeout(processVideo, 1000 / fps - (Date.now() - begin));
       }
 
-      function getSkinMask(src) {
-        // values taken from https://arxiv.org/pdf/1708.02694.pdf
-
-        const rgbEq = equalizeHist(src);
-        // const rgbEq = new cv.Mat(src);
-
-        // const rgbaPlanes = new cv.MatVector();
-        // cv.split(rgbEq, rgbaPlanes);
-        // const r = rgbaPlanes.get(0);
-        // const g = rgbaPlanes.get(1);
-        // const b = rgbaPlanes.get(2);
-
+      function getSkinMask_method1(src) {
         const hsv = new cv.Mat();
-        cv.cvtColor(rgbEq, hsv, cv.COLOR_RGB2HSV);
+        cv.cvtColor(src, hsv, cv.COLOR_RGB2HSV);
 
         const skinMask_hsv = new cv.Mat();
-        cv.inRange(hsv, hsvSkinRangeLow, hsvSkinRangeHigh, skinMask_hsv);
+        cv.inRange(
+          hsv,
+          method1_hsvSkinRangeLow,
+          method1_hsvSkinRangeHigh,
+          skinMask_hsv
+        );
 
-        const skinMask = new cv.Mat();
-        cv.bitwise_and(skinMask_hsv, skinMask_hsv, skinMask);
-
-        rgbEq.delete();
-        // rgbaPlanes.delete();
-        // r.delete();
-        // g.delete();
-        // b.delete();
         hsv.delete();
-        skinMask_hsv.delete();
 
-        return skinMask;
+        return skinMask_hsv;
       }
 
-      function equalizeHist(rgb) {
-        try {
-          const yuv = new cv.Mat();
-          cv.cvtColor(src, yuv, cv.COLOR_RGB2YUV);
+      function getSkinMask_method2(src) {
+        const hsv = new cv.Mat();
+        cv.cvtColor(src, hsv, cv.COLOR_RGB2HSV);
 
-          const yuvPlanes = new cv.MatVector();
-          cv.split(yuv, yuvPlanes);
-          const y = yuvPlanes.get(0);
-          const yEq = new cv.Mat();
+        const skinMask_hsv1 = new cv.Mat();
+        cv.inRange(
+          hsv,
+          method2_hsvSkinRangeLow1,
+          method2_hsvSkinRangeHigh1,
+          skinMask_hsv1
+        );
 
-          cv.equalizeHist(y, yEq);
+        const skinMask_hsv2 = new cv.Mat();
+        cv.inRange(
+          hsv,
+          method2_hsvSkinRangeLow2,
+          method2_hsvSkinRangeHigh2,
+          skinMask_hsv2
+        );
 
-          yuvPlanes.set(0, yEq);
-          const yuvEq = new cv.Mat();
-          cv.merge(yuvPlanes, yuvEq);
+        const skinMask_hsv = new cv.Mat();
+        cv.bitwise_or(skinMask_hsv1, skinMask_hsv2, skinMask_hsv);
 
-          const rgbEq = new cv.Mat();
-          cv.cvtColor(yuvEq, rgbEq, cv.COLOR_YUV2RGB);
+        hsv.delete();
+        skinMask_hsv1.delete();
+        skinMask_hsv2.delete();
 
-          yuv.delete();
-          yuvPlanes.delete();
-          y.delete();
-          yEq.delete();
+        return skinMask_hsv;
+      }
 
-          return rgbEq;
-        } catch (e) {
-          console.log(e);
-          throw e;
-        }
+      function equalizeHist(rgba) {
+        const yuv = new cv.Mat();
+        cv.cvtColor(rgba, yuv, cv.COLOR_RGB2YUV);
+
+        const yuvPlanes = new cv.MatVector();
+        cv.split(yuv, yuvPlanes);
+        const y = yuvPlanes.get(0);
+        const yEq = new cv.Mat();
+
+        cv.equalizeHist(y, yEq);
+
+        yuvPlanes.set(0, yEq);
+        const yuvEq = new cv.Mat();
+        cv.merge(yuvPlanes, yuvEq);
+
+        const rgbEq = new cv.Mat();
+        cv.cvtColor(yuvEq, rgbEq, cv.COLOR_YUV2RGB);
+
+        const rgbaEq = new cv.Mat();
+        cv.cvtColor(rgbEq, rgbaEq, cv.COLOR_RGB2RGBA);
+
+        rgbEq.delete();
+        yuvEq.delete();
+        yEq.delete();
+        y.delete();
+        yuvPlanes.delete();
+        yuv.delete();
+
+        return rgbaEq;
       }
     </script>
   </body>
