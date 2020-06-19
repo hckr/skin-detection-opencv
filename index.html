@@ -4,6 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Document</title>
+    <style>
+      #canvasWrapper {
+        position: relative;
+      }
+
+      .centroid {
+        box-sizing: border-box;
+        position: absolute;
+        border: 3px solid magenta;
+        opacity: 0.5;
+      }
+    </style>
   </head>
   <body>
     <button id="start" style="width: 100%; height: 100px;">
@@ -14,9 +26,9 @@
     </div>
 
     <select id="outputSelector">
+      <option value="input">oryginal image</option>
       <option value="skinonly">only skin from image</option>
       <option value="mask">skin mask</option>
-      <option value="input">input to skin recognition</option>
     </select>
 
     <select id="methodSelector">
@@ -32,7 +44,10 @@
     <br /><br />
 
     <video id="video-input" width="400" height="300"></video>
-    <canvas id="canvas-output" width="400" height="300"></canvas>
+
+    <div id="canvasWrapper">
+      <canvas id="canvas-output" width="400" height="300"></canvas>
+    </div>
 
     <script src="opencv.js"></script>
     <script>
@@ -84,7 +99,7 @@
         );
 
         method1_hsvSkinRangeHigh = scalarToMat(
-          [10, Math.round(0.68 * 255), 255, 255],
+          [10, Math.round(0.8 * 255), 255, 255],
           cv.CV_8UC3
         );
 
@@ -111,7 +126,7 @@
         setTimeout(processVideo);
       });
 
-      const fps = 30;
+      const fps = 60;
 
       let streaming = true;
 
@@ -147,12 +162,27 @@
             return;
         }
 
+        let denoisedMask = denoiseMask(skinMask);
+
         const skinOnly = new cv.Mat();
-        cv.bitwise_and(input, input, skinOnly, skinMask);
+        cv.bitwise_and(input, input, skinOnly, denoisedMask);
+
+        const centroids = findCentroids(denoisedMask);
+
+        canvasWrapper
+          .querySelectorAll(".centroid")
+          .forEach((c) => canvasWrapper.removeChild(c));
+
+        for (const { x, y, width, height } of centroids) {
+          canvasWrapper.insertAdjacentHTML(
+            "beforeend",
+            `<div class="centroid" style="top: ${y}px; left: ${x}px; width: ${width}px; height: ${height}px;"></div>`
+          );
+        }
 
         switch (outputSelector.value) {
           case "mask":
-            cv.imshow("canvas-output", skinMask);
+            cv.imshow("canvas-output", denoisedMask);
             break;
 
           case "skinonly":
@@ -163,6 +193,8 @@
             cv.imshow("canvas-output", input);
             break;
         }
+
+        denoisedMask.delete();
         skinMask.delete();
         skinOnly.delete();
 
@@ -171,6 +203,48 @@
         }
 
         setTimeout(processVideo, 1000 / fps - (Date.now() - begin));
+      }
+
+      function denoiseMask(mask) {
+        const denoisedMask = new cv.Mat();
+        cv.medianBlur(mask, denoisedMask, 7);
+        return denoisedMask;
+      }
+
+      function findCentroids(mask) {
+        const centroids = [];
+
+        const contours = new cv.MatVector();
+        const hierarchy = new cv.Mat();
+        cv.findContours(
+          mask,
+          contours,
+          hierarchy,
+          cv.RETR_LIST,
+          cv.CHAIN_APPROX_NONE
+        );
+        hierarchy.delete();
+
+        for (let i = 0; i < contours.size(); i++) {
+          const contour = contours.get(i);
+          const area = cv.contourArea(contour);
+
+          if (area == 0) {
+            contour.delete();
+            continue;
+          }
+
+          const { x, y, width, height } = cv.boundingRect(contour);
+          if (width > 80 && height > 80) {
+            centroids.push({ x, y, width, height });
+          }
+
+          contour.delete();
+        }
+
+        contours.delete();
+
+        return centroids;
       }
 
       function getSkinMask_method1(src) {
