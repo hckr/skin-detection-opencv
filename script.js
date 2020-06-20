@@ -56,6 +56,7 @@ let method2_hsvSkinRangeLow1, method2_hsvSkinRangeHigh1;
 let method2_hsvSkinRangeLow2, method2_hsvSkinRangeHigh2;
 
 Promise.all([runtimeInitialized, webcamInitialized]).then(() => {
+  optionsSelector.style.display = "flex";
   src = new cv.Mat(video.height, video.width, cv.CV_8UC4);
   cap = new cv.VideoCapture(video);
 

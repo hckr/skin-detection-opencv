@@ -7,14 +7,6 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <div id="opencvInitInfo">
-      Initializing OpenCV.js...
-    </div>
-
-    <button id="start">
-      Enable webcam to start
-    </button>
-
     <fieldset class="options">
       <legend>Options</legend>
 
@@ -54,17 +46,38 @@
     <video id="video-input" width="640" height="480"></video>
 
     <div id="canvasWrapper">
+      <div id="opencvInitInfo">
+        Initializing OpenCV.js...
+      </div>
+      <button id="start">
+        click here to<br />
+        Enable webcam and start
+      </button>
       <canvas id="canvas-output" width="640" height="480"></canvas>
     </div>
 
     <div id="optionsSelector">
-      <div><span>mirror off</span></div>
-      <div><span>mirror on</span></div>
-      <div><span>only skin mask</span></div>
-      <div><span>only skin</span></div>
-      <div><span>original image</span></div>
-      <div><span>denoise off</span></div>
-      <div><span>denoise on</span></div>
+      <div>
+        <span>mirror<br />off</span>
+      </div>
+      <div>
+        <span>mirror<br />on</span>
+      </div>
+      <div>
+        <span>only<br />skin mask</span>
+      </div>
+      <div>
+        <span>only<br />skin</span>
+      </div>
+      <div>
+        <span>original<br />image</span>
+      </div>
+      <div>
+        <span>denoise<br />off</span>
+      </div>
+      <div>
+        <span>denoise<br />on</span>
+      </div>
     </div>
 
     <div class="options-info">
