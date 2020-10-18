@@ -6,4 +6,4 @@ A simple application of OpenCV.js to skin detection for face and hand gestures d
 
 [opencv.js](opencv.js) was downloaded from https://docs.opencv.org/master/opencv.js
 
-The following license applies: https://opencv.org/license/
+For OpenCV license see [OpenCV_LICENSE](OpenCV_LICENSE) (extracted from https://opencv.org/license/)
